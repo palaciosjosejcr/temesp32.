@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Control IoT - Temperaturas</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .thermo {
+      height: 140px;
+      width: 36px;
+      border-radius: 18px;
+      background: linear-gradient(#1f2937,#111827);
+      position: relative;
+      padding: 6px;
+      box-sizing: border-box;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .thermo-fill {
+      position: absolute;
+      bottom: 6px;
+      left: 6px;
+      right: 6px;
+      border-radius: 12px;
+      background: linear-gradient(#f97316,#ef4444);
+      display:flex;
+      align-items:flex-end;
+      justify-content:center;
+      color:#111827;
+      font-weight:700;
+      transition: height 0.6s ease;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans p-6">
+  <header class="flex justify-between items-center mb-6">
+    <div>
+      <h1 class="text-2xl font-bold">Cloud Control — Temperaturas</h1>
+      <p class="text-sm text-slate-400">4 sensores DS18B20 — Firebase RTDB</p>
+    </div>
+    <div class="flex items-center gap-4">
+      <div id="statusIndicator" class="flex items-center gap-2">
+      </div>
+    </div>
+  </header>
+
+  <main class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <section class="space-y-4">
+      <div class="flex gap-4">
+
+        <div class="glass-panel p-4 rounded-2xl bg-slate-800/60 border border-slate-700 w-1/4 flex flex-col items-center">
+          <div class="thermo" id="thermo-0">
+            <div class="thermo-fill" id="thermo-fill-0" style="height:0%"></div>
+          </div>
+          <div class="mt-3 text-center">
+            <div class="text-sm text-slate-400" id="label-0">Sensor 1</div>
+            <div class="text-2xl font-semibold" id="temp-0">-- °C</div>
+          </div>
+        </div>
+
+        <div class="glass-panel p-4 rounded-2xl bg-slate-800/60 border border-slate-700 w-1/4 flex flex-col items-center">
+          <div class="thermo" id="thermo-1">
+            <div class="thermo-fill" id="thermo-fill-1" style="height:0%"></div>
+          </div>
+          <div class="mt-3 text-center">
+            <div class="text-sm text-slate-400" id="label-1">Sensor 2</div>
+            <div class="text-2xl font-semibold" id="temp-1">-- °C</div>
+          </div>
+        </div>
+
+        <div class="glass-panel p-4 rounded-2xl bg-slate-800/60 border border-slate-700 w-1/4 flex flex-col items-center">
+          <div class="thermo" id="thermo-2">
+            <div class="thermo-fill" id="thermo-fill-2" style="height:0%"></div>
+          </div>
+          <div class="mt-3 text-center">
+            <div class="text-sm text-slate-400" id="label-2">Sensor 3</div>
+            <div class="text-2xl font-semibold" id="temp-2">-- °C</div>
+          </div>
+        </div>
+
+        <div class="glass-panel p-4 rounded-2xl bg-slate-800/60 border border-slate-700 w-1/4 flex flex-col items-center">
+          <div class="thermo" id="thermo-3">
+            <div class="thermo-fill" id="thermo-fill-3" style="height:0%"></div>
+          </div>
+          <div class="mt-3 text-center">
+            <div class="text-sm text-slate-400" id="label-3">Sensor 4</div>
+            <div class="text-2xl font-semibold" id="temp-3">-- °C</div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="text-sm text-slate-400">Umbral de alarma configurado: <strong id="alarm-threshold">45°C</strong></div>
+    </section>
+
+    <section class="glass-panel p-4 rounded-2xl bg-slate-800/60 border border-slate-700">
+      <h3 class="text-lg font-semibold mb-3">Gráfica (últimos valores)</h3>
+      <canvas id="chart" height="180"></canvas>
+    </section>
+  </main>
+
+  <audio id="alarm-sound">
+    <source src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" type="audio/ogg">
+  </audio>
+
+  <!-- Firebase + JS -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBWmA8OsE3gJvSCyHBWxU2lARaUm4PpGV4",
+      authDomain: "esp32-93c71.firebaseapp.com",
+      databaseURL: "https://esp32-93c71-default-rtdb.firebaseio.com",
+      projectId: "esp32-93c71",
+      storageBucket: "esp32-93c71.firebasestorage.app",
+      messagingSenderId: "905221459618",
+      appId: "1:905221459618:web:1dd776bb3ebff9b20c51fb",
+      measurementId: "G-85GFZPVSPB"
+    };
+
+    // Inicializar Firebase (SIN ANALYTICS)
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    // IDs de sensores
+    const sensorIDs = [
+      "0x280xD00x20xB20x00x00x00xCF",
+      "0x280xB60x300x200x730x230xB0xE0",
+      "0x280x410xE80x160x400x240xB0x62",
+      "0x280x430x860xD0x730x230xB0x47"
+    ];
+
+    const labels = ["Sensor 1","Sensor 2","Sensor 3","Sensor 4"];
+    const lastValues = [[],[],[],[]];
+    const MAX_POINTS = 20;
+
+    const ctx = document.getElementById('chart').getContext('2d');
+    const colors = ['#f97316','#3b82f6','#10b981','#ec4899'];
+
+    const chart = new Chart(ctx, {
+      type:'line',
+      data:{
+        labels:[],
+        datasets:sensorIDs.map((id,i)=>({
+          label: labels[i],
+          data: [],
+          borderColor: colors[i],
+          fill:false,
+          tension:0.25
+        }))
+      },
+      options:{ animation:false }
+    });
+
+    const tempEls = [0,1,2,3].map(i=>document.getElementById('temp-'+i));
+    const fillEls = [0,1,2,3].map(i=>document.getElementById('thermo-fill-'+i));
+    const labelEls = [0,1,2,3].map(i=>document.getElementById('label-'+i));
+    const alarmSound = document.getElementById('alarm-sound');
+    const statusIndicator = document.getElementById('statusIndicator');
+    const alarmThreshold = 45;
+    document.getElementById('alarm-threshold').innerText = alarmThreshold+"°C";
+
+    const dbTemps = ref(db, "temperatures");
+
+    onValue(dbTemps, snap=>{
+      const data = snap.val()||{};
+      sensorIDs.forEach((id,idx)=>{
+        let val = data[id]?.value ?? null;
+
+        if(val===null || val===-127){
+          tempEls[idx].innerText="-- °C";
+          fillEls[idx].style.height="0%";
+        } else {
+          tempEls[idx].innerText = val.toFixed(2)+" °C";
+          let pct = (val+10)/70*100;
+          fillEls[idx].style.height = Math.min(100,Math.max(0,pct))+"%";
+
+          if(lastValues[idx].length>=MAX_POINTS) lastValues[idx].shift();
+          lastValues[idx].push(val);
+        }
+      });
+
+      const maxLen = Math.max(...lastValues.map(a=>a.length));
+      chart.data.labels = Array.from({length:maxLen},()=> "");
+      chart.data.datasets.forEach((ds,i)=> ds.data = lastValues[i]);
+      chart.update();
+    });
+
+  </script>
+</body>
+</html>
